@@ -14,8 +14,8 @@
 #include <GLFW/glfw3.h>
 
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+constexpr uint32_t WIDTH = 800;
+constexpr uint32_t HEIGHT = 600;
 
 const std::vector validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -35,9 +35,8 @@ private:
     vk::raii::Instance instance = nullptr;
     vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
     vk::raii::PhysicalDevice physicalDevice = nullptr;
-
-
-
+    vk::raii::Device device = nullptr;
+    vk::raii::Queue graphicsQueue = nullptr;
 
     std::vector<const char*> requiredDeviceExtensions = {
         vk::KHRSwapchainExtensionName,
@@ -57,6 +56,7 @@ private:
         createInstance();
         setupDebugMessenger();
         pickPhysicalDevice();
+        createLogicalDevice();
 
     }
 
@@ -160,6 +160,45 @@ private:
         } else {
             throw std::runtime_error( "Failed to find a suitable GPU." );
         }
+    }
+
+
+    void createLogicalDevice(){
+        // Find Queue Family with Graphic Support
+        auto queueFamProperties = physicalDevice.getQueueFamilyProperties();
+        auto queueFamPropSel = std::ranges::find_if(
+            queueFamProperties,
+            []( const vk::QueueFamilyProperties &props ){
+                return ( props.queueFlags & vk::QueueFlagBits::eGraphics ) != static_cast<vk::QueueFlags>(0);
+            }
+        );
+        auto graphicsIdx = static_cast<uint32_t>(
+            std::distance( queueFamProperties.begin(), queueFamPropSel )
+        );
+        // Features Chain
+        vk::StructureChain<vk::PhysicalDeviceFeatures2,vk::PhysicalDeviceVulkan13Features,vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+            {},
+            { .dynamicRendering = true },
+            { .extendedDynamicState = true }
+        };
+        float queuepriority = 0.0f;
+        vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
+            .queueFamilyIndex = graphicsIdx,
+            .queueCount = 1,
+            .pQueuePriorities = &queuepriority
+        };
+        vk::DeviceCreateInfo deviceCreateInfo{
+            .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos = &deviceQueueCreateInfo,
+            .enabledExtensionCount = static_cast<uint32_t>(requiredDeviceExtensions.size()),
+            .ppEnabledExtensionNames = requiredDeviceExtensions.data()
+        };
+
+        device = vk::raii::Device( physicalDevice, deviceCreateInfo );
+        graphicsQueue = vk::raii::Queue( device, graphicsIdx, 0 );
+
+        std::cout << "Queue Index: " << graphicsIdx << std::endl; 
     }
 
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
