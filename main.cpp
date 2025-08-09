@@ -5,6 +5,7 @@
 #include <cstring>
 #include <memory>
 #include <vector>
+#include <limits>
 
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan_raii.hpp>
@@ -39,6 +40,12 @@ private:
     vk::raii::Device device = nullptr;
     vk::raii::Queue queue = nullptr;
 
+    vk::raii::SwapchainKHR swapChain = nullptr;
+    std::vector<vk::Image> swapChainInamges;
+    vk::Format swapChainImageFormat = vk::Format::eUndefined;
+    vk::Extent2D swapChainExtent;
+    std::vector<vk::raii::ImageView> swapChainImageViews;
+
     std::vector<const char*> requiredDeviceExtensions = {
         vk::KHRSwapchainExtensionName,
         vk::KHRSpirv14ExtensionName,
@@ -59,6 +66,7 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
+        createSwapChain();
 
     }
 
@@ -208,6 +216,47 @@ private:
         queue = vk::raii::Queue( device, qIdx, 0 );
 
         std::cout << "Queue Index: " << qIdx << std::endl; 
+    }
+
+    void createSwapChain(){
+        auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surface );
+        swapChainImageFormat = chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(surface));
+        swapChainExtent = chooseSwapExtent(surfaceCapabilities);
+
+        // TODO: Create SwapChain and min Image Count
+
+    }
+
+    static vk::Format chooseSwapSurfaceFormat( const std::vector<vk::SurfaceFormatKHR> &formats ){
+        const auto formatIt = std::ranges::find_if(
+            formats,
+            []( const vk::SurfaceFormatKHR &format ){
+                return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+            }
+        );
+        return formatIt != formats.end() ? formatIt->format : formats[0].format;
+    }
+
+    static vk::PresentModeKHR chooseSwapMode( const std::vector<vk::PresentModeKHR> &modes ){
+        return std::ranges::any_of(
+            modes,
+            []( const vk::PresentModeKHR &mode ){
+                return mode == vk::PresentModeKHR::eMailbox;
+            }
+        ) ? vk::PresentModeKHR::eMailbox : vk::PresentModeKHR::eFifo;
+    }
+
+    vk::Extent2D chooseSwapExtent( const vk::SurfaceCapabilitiesKHR &capabilities ){
+        if( capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max() ){
+            return capabilities.currentExtent;
+        }
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+
+        return {
+            std::clamp<uint32_t>( width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width ),
+            std::clamp<uint32_t>( height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height ),
+        };
     }
 
     static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
